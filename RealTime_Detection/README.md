@@ -1,1 +1,0 @@
-# Object Detection and Obstacle avoidance app for visually impaired people
