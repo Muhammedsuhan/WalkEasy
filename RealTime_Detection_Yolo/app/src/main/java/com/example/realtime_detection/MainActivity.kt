@@ -37,6 +37,7 @@ import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
+import kotlin.math.pow
 
 
 class MainActivity : AppCompatActivity() {
@@ -63,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     val paint = Paint();
     val colors = listOf<Int>(Color.BLUE, Color.GREEN, Color.RED, Color.CYAN, Color.GRAY, Color.BLACK, Color.DKGRAY,
         Color.MAGENTA, Color.YELLOW);
+    val coordinatesList: MutableList<Pair<Float, Float>> = mutableListOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -124,7 +126,25 @@ class MainActivity : AppCompatActivity() {
         Log.d("StreamTag", "############# Executor stopped");
     }
 
+    private fun euclideanDistance(x1: Float, y1: Float, x2: Float, y2: Float): Double {
+        return kotlin.math.sqrt((x1 - x2).toDouble().pow(2) + (y1 - y2).toDouble().pow(2))
+    }
+
+    private fun checkForDuplicate(newX: Float, newY: Float, coordinatesList: List<Pair<Float, Float>>, threshold: Int): Boolean {
+        for (i in maxOf(0, coordinatesList.size - 10) until coordinatesList.size) {
+            val (x, y) = coordinatesList[i]
+            val distance = euclideanDistance(newX, newY, x, y)
+            if (distance < threshold) {
+                // Duplicate detected
+                return true
+            }
+        }
+        return false
+    }
+
+
     private fun yolo_predict(image: TensorImage): TensorImage? {
+        val minScore = 0.25;
         var mutableBitMap = bitMap.copy(Bitmap.Config.ARGB_8888, true);
 
         // Runs model inference and gets result.
@@ -146,33 +166,46 @@ class MainActivity : AppCompatActivity() {
         var canvas = Canvas(mutableBitMap);
 
         outputData.forEachIndexed { i, row ->
-            // if the confidence score is less than 50% then most likely there's any object in the current kernel just skip it
-            if(row.get(4) < 0.5) return@forEachIndexed
+            // if the confidence score is less than minScore% then most likely there isn't any object in the current kernel just skip it
+            if(row.get(4) < minScore) return@forEachIndexed
 
             val centerX = row.get(0) * imageWidth
             val centerY = row.get(1) * imageHeight
             val boxWidth = row.get(2) * imageWidth
             val boxHeight = row.get(3) * imageHeight
 
-            val left = maxOf(0.0F, centerX - boxWidth/2);
-            val top = maxOf(0.0F, centerY - boxHeight/2);
-            val right = maxOf(0.0F, centerX + boxWidth/2);
-            val bottom = maxOf(0.0F, centerY + boxHeight/2);
+            val distanceThreshold = 50 // Adjust this threshold as needed
+            val isDuplicate = checkForDuplicate(centerX, centerY, coordinatesList, distanceThreshold)
 
-            val classProbabilities = row.sliceArray(5 until 85)
-            val maxProbabilityIndex = classProbabilities.indices.maxByOrNull { classProbabilities[it] } ?: -1
-            val score = classProbabilities.get(maxProbabilityIndex);
+            if (!isDuplicate) {
+                coordinatesList.add(centerX to centerY)
+
+                val left = maxOf(0.0F, centerX - boxWidth / 2);
+                val top = maxOf(0.0F, centerY - boxHeight / 2);
+                val right = maxOf(0.0F, centerX + boxWidth / 2);
+                val bottom = maxOf(0.0F, centerY + boxHeight / 2);
+
+                val classProbabilities = row.sliceArray(5 until 85)
+                val maxProbabilityIndex = classProbabilities.indices.maxByOrNull { classProbabilities[it] } ?: -1
+                val score = classProbabilities.get(maxProbabilityIndex);
 
 
-            paint.setColor(colors.get(i%9))
-            paint.style = Paint.Style.STROKE;
-            paint.textSize = imageHeight/15f;
-            canvas.drawRect(RectF(left, top, right, bottom), paint);
-            paint.style = Paint.Style.FILL;
-            canvas.drawText(ssd_labels.get(maxProbabilityIndex) + " " + score.toString(), left, top, paint);
+                paint.setColor(colors.get(i % 9))
+                paint.style = Paint.Style.STROKE;
+                paint.textSize = imageHeight / 15f;
+                canvas.drawRect(RectF(left, top, right, bottom), paint);
+                paint.style = Paint.Style.FILL;
+                canvas.drawText(
+                    yolo_labels.get(maxProbabilityIndex) + " " + score.toString(),
+                    left,
+                    top,
+                    paint
+                );
+            }
         }
 
 
+        coordinatesList.clear()
         return TensorImage.fromBitmap(mutableBitMap)
     }
 
