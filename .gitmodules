@@ -1,0 +1,6 @@
+[submodule "ESP_Stereo_OpenCV"]
+	path = ESP_Stereo_OpenCV
+	url = https://github.com/susano254/ESP_Cam_Stereo.git
+[submodule "ESP_Stereo"]
+	path = ESP_Stereo
+	url = https://github.com/susano254/ESP_Stereo.git
